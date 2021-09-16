@@ -17,13 +17,13 @@
 * under the License.
 */
 
-import {retrieve, defaults, extend, each, isObject, map} from 'zrender/src/core/util';
+import {retrieve, defaults, extend, each, isObject} from 'zrender/src/core/util';
 import * as graphic from '../../util/graphic';
 import {getECData} from '../../util/innerStore';
 import {createTextStyle} from '../../label/labelStyle';
 import Model from '../../model/Model';
 import {isRadianAroundZero, remRadian} from '../../util/number';
-import {createSymbol, normalizeSymbolOffset} from '../../util/symbol';
+import {createSymbol} from '../../util/symbol';
 import * as matrixUtil from 'zrender/src/core/matrix';
 import {applyTransform as v2ApplyTransform} from 'zrender/src/core/vector';
 import {shouldShowAllLabels} from '../../coord/axisHelper';
@@ -33,7 +33,7 @@ import { AxisBaseOption } from '../../coord/axisCommonTypes';
 import Element from 'zrender/src/Element';
 import { PathStyleProps } from 'zrender/src/graphic/Path';
 import OrdinalScale from '../../scale/Ordinal';
-import { prepareLayoutList, hideOverlap } from '../../label/labelLayoutHelper';
+
 
 const PI = Math.PI;
 
@@ -283,10 +283,14 @@ const builders: Record<'axisLine' | 'axisTickLabel' | 'axisName', AxisElementsBu
         group.add(line);
 
         let arrows = axisModel.get(['axisLine', 'symbol']);
+        let arrowSize = axisModel.get(['axisLine', 'symbolSize']);
+
+        let arrowOffset = axisModel.get(['axisLine', 'symbolOffset']) || 0;
+        if (typeof arrowOffset === 'number') {
+            arrowOffset = [arrowOffset, arrowOffset];
+        }
 
         if (arrows != null) {
-            let arrowSize = axisModel.get(['axisLine', 'symbolSize']);
-
             if (typeof arrows === 'string') {
                 // Use the same arrow for start and end point
                 arrows = [arrows, arrows];
@@ -297,8 +301,6 @@ const builders: Record<'axisLine' | 'axisTickLabel' | 'axisName', AxisElementsBu
                 // Use the same size for width and height
                 arrowSize = [arrowSize, arrowSize];
             }
-
-            const arrowOffset = normalizeSymbolOffset(axisModel.get(['axisLine', 'symbolOffset']) || 0, arrowSize);
 
             const symbolWidth = arrowSize[0];
             const symbolHeight = arrowSize[1];
@@ -348,20 +350,6 @@ const builders: Record<'axisLine' | 'axisTickLabel' | 'axisName', AxisElementsBu
         fixMinMaxLabelShow(axisModel, labelEls, ticksEls);
 
         buildAxisMinorTicks(group, transformGroup, axisModel, opt.tickDirection);
-
-        // This bit fixes the label overlap issue for the time chart.
-        // See https://github.com/apache/echarts/issues/14266 for more.
-        if (axisModel.get(['axisLabel', 'hideOverlap'])) {
-            const labelList = prepareLayoutList(map(labelEls, label => ({
-                label,
-                priority: label.z2,
-                defaultAttr: {
-                    ignore: label.ignore
-                }
-            })));
-
-            hideOverlap(labelList);
-        }
     },
 
     axisName(opt, axisModel, group, transformGroup) {
@@ -420,10 +408,11 @@ const builders: Record<'axisLine' | 'axisTickLabel' | 'axisName', AxisElementsBu
 
         const textFont = textStyleModel.getFont();
 
+        const nameWidth = textStyleModel.get('width') as number;
         const truncateOpt = axisModel.get('nameTruncate', true) || {};
         const ellipsis = truncateOpt.ellipsis;
         const maxWidth = retrieve(
-            opt.nameTruncateMaxWidth, truncateOpt.maxWidth, axisNameAvailableWidth
+            opt.nameTruncateMaxWidth, truncateOpt.maxWidth, axisNameAvailableWidth, nameWidth
         );
 
         const textEl = new graphic.Text({
@@ -434,7 +423,7 @@ const builders: Record<'axisLine' | 'axisTickLabel' | 'axisName', AxisElementsBu
             style: createTextStyle(textStyleModel, {
                 text: name,
                 font: textFont,
-                overflow: 'truncate',
+                overflow: textStyleModel.get('overflow') || 'truncate',
                 width: maxWidth,
                 ellipsis,
                 fill: textStyleModel.getTextColor()
@@ -781,7 +770,7 @@ function buildAxisLabel(
             y: opt.labelOffset + opt.labelDirection * labelMargin,
             rotation: labelLayout.rotation,
             silent: silent,
-            z2: 10 + (labelItem.level || 0),
+            z2: 10,
             style: createTextStyle(itemLabelModel, {
                 text: formattedLabel,
                 align: itemLabelModel.getShallow('align', true)
