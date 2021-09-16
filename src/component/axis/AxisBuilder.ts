@@ -17,13 +17,13 @@
 * under the License.
 */
 
-import {retrieve, defaults, extend, each, isObject, map} from 'zrender/src/core/util';
+import {retrieve, defaults, extend, each, isObject} from 'zrender/src/core/util';
 import * as graphic from '../../util/graphic';
 import {getECData} from '../../util/innerStore';
 import {createTextStyle} from '../../label/labelStyle';
 import Model from '../../model/Model';
 import {isRadianAroundZero, remRadian} from '../../util/number';
-import {createSymbol, normalizeSymbolOffset} from '../../util/symbol';
+import {createSymbol} from '../../util/symbol';
 import * as matrixUtil from 'zrender/src/core/matrix';
 import {applyTransform as v2ApplyTransform} from 'zrender/src/core/vector';
 import {shouldShowAllLabels} from '../../coord/axisHelper';
@@ -33,8 +33,7 @@ import { AxisBaseOption } from '../../coord/axisCommonTypes';
 import Element from 'zrender/src/Element';
 import { PathStyleProps } from 'zrender/src/graphic/Path';
 import OrdinalScale from '../../scale/Ordinal';
-import { prepareLayoutList, hideOverlap } from '../../label/labelLayoutHelper';
-
+import Axis2D from '../../coord/cartesian/Axis2D';
 const PI = Math.PI;
 
 type AxisIndexKey = 'xAxisIndex' | 'yAxisIndex' | 'radiusAxisIndex'
@@ -46,6 +45,14 @@ type AxisEventData = {
     targetType: 'axisName' | 'axisLabel'
     name?: string
     value?: string | number
+} & {
+    [key in AxisIndexKey]?: number
+};
+
+type LabelFormatterParams = {
+    componentType: string
+    name: string
+    $vars: ['name']
 } & {
     [key in AxisIndexKey]?: number
 };
@@ -283,10 +290,14 @@ const builders: Record<'axisLine' | 'axisTickLabel' | 'axisName', AxisElementsBu
         group.add(line);
 
         let arrows = axisModel.get(['axisLine', 'symbol']);
+        let arrowSize = axisModel.get(['axisLine', 'symbolSize']);
+
+        let arrowOffset = axisModel.get(['axisLine', 'symbolOffset']) || 0;
+        if (typeof arrowOffset === 'number') {
+            arrowOffset = [arrowOffset, arrowOffset];
+        }
 
         if (arrows != null) {
-            let arrowSize = axisModel.get(['axisLine', 'symbolSize']);
-
             if (typeof arrows === 'string') {
                 // Use the same arrow for start and end point
                 arrows = [arrows, arrows];
@@ -297,8 +308,6 @@ const builders: Record<'axisLine' | 'axisTickLabel' | 'axisName', AxisElementsBu
                 // Use the same size for width and height
                 arrowSize = [arrowSize, arrowSize];
             }
-
-            const arrowOffset = normalizeSymbolOffset(axisModel.get(['axisLine', 'symbolOffset']) || 0, arrowSize);
 
             const symbolWidth = arrowSize[0];
             const symbolHeight = arrowSize[1];
@@ -348,20 +357,6 @@ const builders: Record<'axisLine' | 'axisTickLabel' | 'axisName', AxisElementsBu
         fixMinMaxLabelShow(axisModel, labelEls, ticksEls);
 
         buildAxisMinorTicks(group, transformGroup, axisModel, opt.tickDirection);
-
-        // This bit fixes the label overlap issue for the time chart.
-        // See https://github.com/apache/echarts/issues/14266 for more.
-        if (axisModel.get(['axisLabel', 'hideOverlap'])) {
-            const labelList = prepareLayoutList(map(labelEls, label => ({
-                label,
-                priority: label.z2,
-                defaultAttr: {
-                    ignore: label.ignore
-                }
-            })));
-
-            hideOverlap(labelList);
-        }
     },
 
     axisName(opt, axisModel, group, transformGroup) {
@@ -376,7 +371,13 @@ const builders: Record<'axisLine' | 'axisTickLabel' | 'axisName', AxisElementsBu
         const textStyleModel = axisModel.getModel('nameTextStyle');
         const gap = axisModel.get('nameGap') || 0;
 
-        const extent = axisModel.axis.getExtent();
+        let extent: [number, number];
+        if (~['x', 'y'].indexOf(axisModel.axis.dim)) {
+            extent = (axisModel.axis as Axis2D).getGridExtent();
+        }
+        else {
+            extent = axisModel.axis.getExtent();
+        }
         const gapSignal = extent[0] > extent[1] ? -1 : 1;
         const pos = [
             nameLocation === 'start'
@@ -426,6 +427,16 @@ const builders: Record<'axisLine' | 'axisTickLabel' | 'axisName', AxisElementsBu
             opt.nameTruncateMaxWidth, truncateOpt.maxWidth, axisNameAvailableWidth
         );
 
+        const tooltipOpt = axisModel.get('tooltip', true);
+
+        const mainType = axisModel.mainType;
+        const formatterParams: LabelFormatterParams = {
+            componentType: mainType,
+            name: name,
+            $vars: ['name']
+        };
+        formatterParams[mainType + 'Index' as AxisIndexKey] = axisModel.componentIndex;
+
         const textEl = new graphic.Text({
             x: pos[0],
             y: pos[1],
@@ -446,13 +457,15 @@ const builders: Record<'axisLine' | 'axisTickLabel' | 'axisName', AxisElementsBu
             }),
             z2: 1
         }) as AxisLabelText;
-
-        graphic.setTooltipConfig({
-            el: textEl,
-            componentModel: axisModel,
-            itemName: name
-        });
-
+        textEl.tooltip = (tooltipOpt && tooltipOpt.show)
+            ? extend({
+                content: name,
+                formatter() {
+                    return name;
+                },
+                formatterParams: formatterParams
+            }, tooltipOpt)
+            : null;
         textEl.__fullText = name;
         // Id for animation
         textEl.anid = 'name';
@@ -756,7 +769,7 @@ function buildAxisLabel(
 
     each(labels, function (labelItem, index) {
         const tickValue = axis.scale.type === 'ordinal'
-            ? (axis.scale as OrdinalScale).getRawOrdinalNumber(labelItem.tickValue)
+            ? (axis.scale as OrdinalScale).getRawIndex(labelItem.tickValue)
             : labelItem.tickValue;
         const formattedLabel = labelItem.formattedLabel;
         const rawLabel = labelItem.rawLabel;
@@ -781,7 +794,7 @@ function buildAxisLabel(
             y: opt.labelOffset + opt.labelDirection * labelMargin,
             rotation: labelLayout.rotation,
             silent: silent,
-            z2: 10 + (labelItem.level || 0),
+            z2: 10,
             style: createTextStyle(itemLabelModel, {
                 text: formattedLabel,
                 align: itemLabelModel.getShallow('align', true)

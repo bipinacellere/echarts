@@ -33,15 +33,9 @@ import Model from '../model/Model';
 import { AxisBaseModel } from './AxisBaseModel';
 import LogScale from '../scale/Log';
 import Axis from './Axis';
-import {
-    AxisBaseOption,
-    CategoryAxisBaseOption,
-    LogAxisBaseOption,
-    TimeAxisLabelFormatterOption,
-    ValueAxisBaseOption
-} from './axisCommonTypes';
+import { AxisBaseOption, TimeAxisLabelFormatterOption } from './axisCommonTypes';
 import type CartesianAxisModel from './cartesian/AxisModel';
-import SeriesData from '../data/SeriesData';
+import List from '../data/List';
 import { getStackedDimension } from '../data/helper/dataStackHelper';
 import { Dictionary, DimensionName, ScaleTick, TimeScaleTick } from '../util/types';
 import { ensureScaleRawExtentInfo } from './scaleRawExtentInfo';
@@ -55,7 +49,7 @@ type BarWidthAndOffset = ReturnType<typeof makeColumnLayout>;
  *
  * Caution:
  * Precondition of calling this method:
- * The scale extent has been initialized using series data extent via
+ * The scale extent has been initailized using series data extent via
  * `scale.setExtent` or `scale.unionExtentFromData`;
  */
 export function getScaleExtent(scale: Scale, model: AxisBaseModel) {
@@ -109,7 +103,7 @@ export function getScaleExtent(scale: Scale, model: AxisBaseModel) {
 function adjustScaleForOverflow(
     min: number,
     max: number,
-    model: CartesianAxisModel,  // Only support cartesian coord yet.
+    model: CartesianAxisModel,  // Onlhy support cartesian coord yet.
     barWidthAndOffset: BarWidthAndOffset
 ) {
 
@@ -135,7 +129,7 @@ function adjustScaleForOverflow(
     maxOverflow = Math.abs(maxOverflow);
     const totalOverFlow = minOverflow + maxOverflow;
 
-    // Calculate required buffer based on old range and overflow
+    // Calulate required buffer based on old range and overflow
     const oldRange = max - min;
     const oldRangePercentOfNew = (1 - (minOverflow + maxOverflow) / axisLength);
     const overflowBuffer = ((oldRange / oldRangePercentOfNew) - oldRange);
@@ -149,17 +143,22 @@ function adjustScaleForOverflow(
 // Precondition of calling this method:
 // The scale extent has been initailized using series data extent via
 // `scale.setExtent` or `scale.unionExtentFromData`;
-export function niceScaleExtent(scale: Scale, inModel: AxisBaseModel) {
-    const model = inModel as AxisBaseModel<LogAxisBaseOption>;
+export function niceScaleExtent(
+    scale: Scale,
+    model: AxisBaseModel,
+    extent?: number[],
+    splitNumber?: number
+) {
     const extentInfo = getScaleExtent(scale, model);
-    const extent = extentInfo.extent;
-    const splitNumber = model.get('splitNumber');
+    extent = extent || extentInfo.extent;
+    splitNumber = splitNumber || model.get('splitNumber');
 
     if (scale instanceof LogScale) {
         scale.base = model.get('logBase');
     }
 
     const scaleType = scale.type;
+    const interval = model.get('interval');
     scale.setExtent(extent[0], extent[1]);
     scale.niceExtent({
         splitNumber: splitNumber,
@@ -168,7 +167,8 @@ export function niceScaleExtent(scale: Scale, inModel: AxisBaseModel) {
         minInterval: (scaleType === 'interval' || scaleType === 'time')
             ? model.get('minInterval') : null,
         maxInterval: (scaleType === 'interval' || scaleType === 'time')
-            ? model.get('maxInterval') : null
+            ? model.get('maxInterval') : null,
+        interval
     });
 
     // If some one specified the min, max. And the default calculated interval
@@ -176,7 +176,6 @@ export function niceScaleExtent(scale: Scale, inModel: AxisBaseModel) {
     // in angle axis with angle 0 - 360. Interval calculated in interval scale is hard
     // to be 60.
     // FIXME
-    const interval = model.get('interval');
     if (interval != null) {
         (scale as IntervalScale).setInterval && (scale as IntervalScale).setInterval(interval);
     }
@@ -210,7 +209,7 @@ export function createScaleByModel(model: AxisBaseModel, axisType?: string): Sca
 }
 
 /**
- * Check if the axis cross 0
+ * Check if the axis corss 0
  */
 export function ifAxisCrossZero(axis: Axis) {
     const dataExtent = axis.scale.getExtent();
@@ -224,12 +223,11 @@ export function ifAxisCrossZero(axis: Axis) {
  * @return Label formatter function.
  *         param: {number} tickValue,
  *         param: {number} idx, the index in all ticks.
- *                         If category axis, this param is not required.
+ *                         If category axis, this param is not requied.
  *         return: {string} label string.
  */
 export function makeLabelFormatter(axis: Axis): (tick: ScaleTick, idx?: number) => string {
-    const labelFormatter = (axis.getLabelModel() as Model<ValueAxisBaseOption['axisLabel']>)
-        .get('formatter');
+    const labelFormatter = axis.getLabelModel().get('formatter');
     const categoryTickStart = axis.type === 'category' ? axis.scale.getExtent()[0] : null;
 
     if (axis.scale.type === 'time') {
@@ -243,7 +241,7 @@ export function makeLabelFormatter(axis: Axis): (tick: ScaleTick, idx?: number) 
         return (function (tpl) {
             return function (tick: ScaleTick) {
                 // For category axis, get raw value; for numeric axis,
-                // get formatted label like '1,333,444'.
+                // get foramtted label like '1,333,444'.
                 const label = axis.scale.getLabel(tick);
                 const text = tpl.replace('{value}', label != null ? label : '');
 
@@ -271,7 +269,7 @@ export function makeLabelFormatter(axis: Axis): (tick: ScaleTick, idx?: number) 
                     } : null
                 );
             };
-        })(labelFormatter as (...args: any[]) => string);
+        })(labelFormatter);
     }
     else {
         return function (tick: ScaleTick) {
@@ -355,7 +353,7 @@ function rotateTextRect(textRect: RectLike, rotate: number) {
  * @return {number|String} Can be null|'auto'|number|function
  */
 export function getOptionCategoryInterval(model: Model<AxisBaseOption['axisLabel']>) {
-    const interval = (model as Model<CategoryAxisBaseOption['axisLabel']>).get('interval');
+    const interval = model.get('interval');
     return interval == null ? 'auto' : interval;
 }
 
@@ -369,14 +367,14 @@ export function shouldShowAllLabels(axis: Axis): boolean {
         && getOptionCategoryInterval(axis.getLabelModel()) === 0;
 }
 
-export function getDataDimensionsOnAxis(data: SeriesData, axisDim: string): DimensionName[] {
+export function getDataDimensionsOnAxis(data: List, axisDim: string): DimensionName[] {
     // Remove duplicated dat dimensions caused by `getStackedDimension`.
     const dataDimMap = {} as Dictionary<boolean>;
-    // Currently `mapDimensionsAll` will contain stack result dimension ('__\0ecstackresult').
+    // Currently `mapDimensionsAll` will contian stack result dimension ('__\0ecstackresult').
     // PENDING: is it reasonable? Do we need to remove the original dim from "coord dim" since
     // there has been stacked result dim?
     zrUtil.each(data.mapDimensionsAll(axisDim), function (dataDim) {
-        // For example, the extent of the original dimension
+        // For example, the extent of the orginal dimension
         // is [0.1, 0.5], the extent of the `stackResultDimension`
         // is [7, 9], the final extent should NOT include [0.1, 0.5],
         // because there is no graphic corresponding to [0.1, 0.5].
@@ -387,7 +385,7 @@ export function getDataDimensionsOnAxis(data: SeriesData, axisDim: string): Dime
     return zrUtil.keys(dataDimMap);
 }
 
-export function unionAxisExtentFromData(dataExtent: number[], data: SeriesData, axisDim: string): void {
+export function unionAxisExtentFromData(dataExtent: number[], data: List, axisDim: string): void {
     if (data) {
         zrUtil.each(getDataDimensionsOnAxis(data, axisDim), function (dim) {
             const seriesExtent = data.getApproximateExtent(dim);

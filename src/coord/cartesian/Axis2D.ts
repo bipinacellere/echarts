@@ -66,6 +66,7 @@ class Axis2D extends Axis {
      */
     grid: Grid;
 
+    private _gridExtent: [number, number];
 
     constructor(
         dim: DimensionName,
@@ -115,13 +116,21 @@ class Axis2D extends Axis {
      * Set ordinalSortInfo
      * @param info new OrdinalSortInfo
      */
-    setCategorySortInfo(info: OrdinalSortInfo): boolean {
+    setCategorySortInfo(info: OrdinalSortInfo[]): boolean {
         if (this.type !== 'category') {
             return false;
         }
 
         this.model.option.categorySortInfo = info;
-        (this.scale as OrdinalScale).setSortInfo(info);
+        (this.scale as OrdinalScale).setCategorySortInfo(info);
+    }
+
+    setGridExtent(start: number, end: number) {
+        this._gridExtent = [start, end];
+    }
+
+    getGridExtent(): [number, number] {
+        return this._gridExtent.slice() as [number, number];
     }
 
 }
