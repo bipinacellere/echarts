@@ -18,9 +18,9 @@
 */
 
 import SeriesModel from '../../model/Series';
-import prepareSeriesDataSchema from '../../data/helper/createDimensions';
+import createDimensions from '../../data/helper/createDimensions';
 import {getDimensionTypeByAxis} from '../../data/helper/dimensionHelper';
-import SeriesData from '../../data/SeriesData';
+import List from '../../data/List';
 import * as zrUtil from 'zrender/src/core/util';
 import {groupData, SINGLE_REFERRING} from '../../util/model';
 import LegendVisualProvider from '../../visual/LegendVisualProvider';
@@ -33,9 +33,7 @@ import {
     BoxLayoutOptionMixin,
     ZRColor,
     Dictionary,
-    SeriesLabelOption,
-    CallbackDataParams,
-    DefaultStatesMixinEmpasis
+    SeriesLabelOption
 } from '../../util/types';
 import SingleAxis from '../../coord/single/SingleAxis';
 import GlobalModel from '../../model/Global';
@@ -50,17 +48,12 @@ interface ThemeRiverSeriesLabelOption extends SeriesLabelOption {
 
 type ThemerRiverDataItem = [OptionDataValueDate, OptionDataValueNumeric, string];
 
-interface ThemeRiverStatesMixin {
-    emphasis?: DefaultStatesMixinEmpasis
-}
-export interface ThemeRiverStateOption<TCbParams = never> {
+export interface ThemeRiverStateOption {
     label?: ThemeRiverSeriesLabelOption
-    itemStyle?: ItemStyleOption<TCbParams>
+    itemStyle?: ItemStyleOption
 }
 
-export interface ThemeRiverSeriesOption
-    extends SeriesOption<ThemeRiverStateOption<CallbackDataParams>, ThemeRiverStatesMixin>,
-    ThemeRiverStateOption<CallbackDataParams>,
+export interface ThemeRiverSeriesOption extends SeriesOption<ThemeRiverStateOption>, ThemeRiverStateOption,
     SeriesOnSingleOptionMixin, BoxLayoutOptionMixin {
     type?: 'themeRiver'
 
@@ -76,6 +69,13 @@ export interface ThemeRiverSeriesOption
      * [date, value, name]
      */
     data?: ThemerRiverDataItem[]
+    
+    /**
+     * draw mode symmetrical or asymmetical
+     * default symmetrical
+     */
+    drawMode ?:"symmetrical"|"wiggle"
+
 }
 
 class ThemeRiverSeriesModel extends SeriesModel<ThemeRiverSeriesOption> {
@@ -159,7 +159,7 @@ class ThemeRiverSeriesModel extends SeriesModel<ThemeRiverSeriesOption> {
      * @param  option  the initial option that user gived
      * @param  ecModel  the model object for themeRiver option
      */
-    getInitialData(option: ThemeRiverSeriesOption, ecModel: GlobalModel): SeriesData {
+    getInitialData(option: ThemeRiverSeriesOption, ecModel: GlobalModel): List {
 
         const singleAxisModel = this.getReferringComponents('singleAxis', SINGLE_REFERRING).models[0];
 
@@ -175,7 +175,7 @@ class ThemeRiverSeriesModel extends SeriesModel<ThemeRiverSeriesOption> {
         const nameList = [];
         const nameMap = this.nameMap = zrUtil.createHashMap();
         let count = 0;
-
+        
         for (let i = 0; i < data.length; ++i) {
             nameList.push(data[i][DATA_NAME_INDEX]);
             if (!nameMap.get(data[i][DATA_NAME_INDEX] as string)) {
@@ -184,7 +184,7 @@ class ThemeRiverSeriesModel extends SeriesModel<ThemeRiverSeriesOption> {
             }
         }
 
-        const { dimensions } = prepareSeriesDataSchema(data, {
+        const dimensionsInfo = createDimensions(data, {
             coordDimensions: ['single'],
             dimensionsDefine: [
                 {
@@ -207,9 +207,8 @@ class ThemeRiverSeriesModel extends SeriesModel<ThemeRiverSeriesOption> {
             }
         });
 
-        const list = new SeriesData(dimensions, this);
+        const list = new List(dimensionsInfo, this);
         list.initData(data);
-
         return list;
     }
 
@@ -221,21 +220,23 @@ class ThemeRiverSeriesModel extends SeriesModel<ThemeRiverSeriesOption> {
         const data = this.getData();
         const lenCount = data.count();
         const indexArr = [];
-
         for (let i = 0; i < lenCount; ++i) {
             indexArr[i] = i;
         }
 
-        const timeDim = data.mapDimension('single');
+        const timeDim = data.mapDimension('single');//time
 
         // data group by name
         const groupResult = groupData(indexArr, function (index) {
             return data.get('name', index) as string;
         });
+        
+
         const layerSeries: {
             name: string
             indices: number[]
         }[] = [];
+
         groupResult.buckets.each(function (items: number[], key: string) {
             items.sort(function (index1: number, index2: number) {
                 return data.get(timeDim, index1) as number - (data.get(timeDim, index2) as number);
@@ -304,6 +305,9 @@ class ThemeRiverSeriesModel extends SeriesModel<ThemeRiverSeriesOption> {
         // gap in axis's orthogonal orientation
         boundaryGap: ['10%', '10%'],
 
+        //draw mode 
+        drawMode:"symmetrical",
+        
         // legendHoverLink: true,
 
         singleAxisIndex: 0,
@@ -323,6 +327,8 @@ class ThemeRiverSeriesModel extends SeriesModel<ThemeRiverSeriesOption> {
                 show: true
             }
         }
+
+
     };
 }
 
