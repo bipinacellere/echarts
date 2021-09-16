@@ -33,7 +33,7 @@ import ExtensionAPI from '../core/ExtensionAPI';
 import SeriesModel from '../model/Series';
 import { createHashMap, HashMap } from 'zrender/src/core/util';
 import { TaskPlanCallbackReturn, TaskProgressParams } from '../core/task';
-import SeriesData from '../data/SeriesData';
+import List, {ListDimensionType} from '../data/List';
 import { Dictionary, ElementEventName, ImageLike, TextAlign, TextVerticalAlign } from 'zrender/src/core/types';
 import { PatternObject } from 'zrender/src/graphic/Pattern';
 import { TooltipMarker } from './format';
@@ -47,8 +47,6 @@ import { ImageStyleProps } from 'zrender/src/graphic/Image';
 import ZRText, { TextStyleProps } from 'zrender/src/graphic/Text';
 import { Source } from '../data/Source';
 import Model from '../model/Model';
-import { DataStoreDimensionType } from '../data/DataStore';
-import { DimensionUserOuputEncode } from '../data/helper/dimensionHelper';
 
 
 
@@ -59,7 +57,6 @@ import { DimensionUserOuputEncode } from '../data/helper/dimensionHelper';
 export {Dictionary};
 
 export type RendererType = 'canvas' | 'svg';
-export type NullUndefined = null | undefined;
 
 export type LayoutOrient = 'vertical' | 'horizontal';
 export type HorizontalAlign = 'left' | 'center' | 'right';
@@ -131,7 +128,7 @@ export interface ECElement extends Element {
 }
 
 export interface DataHost {
-    getData(dataType?: SeriesDataType): SeriesData;
+    getData(dataType?: SeriesDataType): List;
 }
 
 export interface DataModel extends Model<unknown>, DataHost, DataFormatMixin {}
@@ -303,8 +300,8 @@ export interface StageHandlerInternal extends StageHandler {
 
 export type StageHandlerProgressParams = TaskProgressParams;
 export interface StageHandlerProgressExecutor {
-    dataEach?: (data: SeriesData, idx: number) => void;
-    progress?: (params: StageHandlerProgressParams, data: SeriesData) => void;
+    dataEach?: (data: List, idx: number) => void;
+    progress?: (params: StageHandlerProgressParams, data: List) => void;
 }
 export type StageHandlerPlanReturn = TaskPlanCallbackReturn;
 export interface StageHandlerPlan {
@@ -358,11 +355,11 @@ export type OrdinalSortInfo = {
 /**
  * `OptionDataValue` is the primitive value in `series.data` or `dataset.source`.
  * `OptionDataValue` are parsed (see `src/data/helper/dataValueHelper.parseDataValue`)
- * into `ParsedValue` and stored into `data/SeriesData` storage.
+ * into `ParsedValue` and stored into `data/List` storage.
  * Note:
  * (1) The term "parse" does not mean `src/scale/Scale['parse']`.
  * (2) If a category dimension is not mapped to any axis, its raw value will NOT be
- * parsed to `OrdinalNumber` but keep the original `OrdinalRawValue` in `src/data/SeriesData` storage.
+ * parsed to `OrdinalNumber` but keep the original `OrdinalRawValue` in `src/data/List` storage.
  */
 export type ParsedValue = ParsedValueNumeric | OrdinalRawValue;
 export type ParsedValueNumeric = number | OrdinalNumber;
@@ -377,7 +374,6 @@ export type ParsedValueNumeric = number | OrdinalNumber;
 export type ScaleDataValue = ParsedValueNumeric | OrdinalRawValue | Date;
 
 export interface ScaleTick {
-    level?: number,
     value: number
 };
 export interface TimeScaleTick extends ScaleTick {
@@ -418,7 +414,7 @@ export type DimensionIndex = number;
 export type DimensionIndexLoose = DimensionIndex | string;
 export type DimensionName = string;
 export type DimensionLoose = DimensionName | DimensionIndexLoose;
-export type DimensionType = DataStoreDimensionType;
+export type DimensionType = ListDimensionType;
 
 export const VISUAL_DIMENSIONS = createHashMap<number, keyof DataVisualDimensions>([
     'tooltip', 'label', 'itemName', 'itemId', 'itemGroupId', 'seriesName'
@@ -432,12 +428,15 @@ export interface DataVisualDimensions {
     label?: DimensionIndex;
     itemName?: DimensionIndex;
     itemId?: DimensionIndex;
+    // Group id is used for linking the aggregate relationship between two set of data.
+    // Which is useful in prepresenting the transition key of drilldown/up animation.
+    // Or hover linking.
     itemGroupId?: DimensionIndex;
     seriesName?: DimensionIndex;
 }
 
 export type DimensionDefinition = {
-    type?: DataStoreDimensionType,
+    type?: ListDimensionType,
     name?: DimensionName,
     displayName?: string
 };
@@ -651,11 +650,6 @@ export interface OptionEncodeVisualDimensions {
     itemId?: OptionEncodeValue;
     seriesName?: OptionEncodeValue;
     // Notice: `value` is coordDim, not nonCoordDim.
-
-    // Group id is used for linking the aggregate relationship between two set of data.
-    // Which is useful in prepresenting the transition key of drilldown/up animation.
-    // Or hover linking.
-    itemGroupId?: OptionEncodeValue;
 }
 export interface OptionEncode extends OptionEncodeVisualDimensions {
     [coordDim: string]: OptionEncodeValue | undefined
@@ -694,6 +688,16 @@ export interface CallbackDataParams {
     $vars: string[];
 }
 export type InterpolatableValue = ParsedValue | ParsedValue[];
+export type DimensionUserOuputEncode = {
+    [coordOrVisualDimName: string]:
+        // index: coordDimIndex, value: dataDimIndex
+        DimensionIndex[]
+};
+export type DimensionUserOuput = {
+    // The same as `data.dimensions`
+    dimensionNames: DimensionName[]
+    encode: DimensionUserOuputEncode
+};
 
 export type DecalDashArrayX = number | (number | number[])[];
 export type DecalDashArrayY = number | number[];
@@ -938,29 +942,29 @@ export type SymbolOffsetCallback<T> = (rawValue: any, params: T) => string | num
  * Mixin of option set to control the element symbol.
  * Include type of symbol, and size of symbol.
  */
-export interface SymbolOptionMixin<T = never> {
+export interface SymbolOptionMixin<T = unknown> {
     /**
      * type of symbol, like `cirlce`, `rect`, or custom path and image.
      */
-    symbol?: string | (T extends never ? never : SymbolCallback<T>)
+    symbol?: string | (unknown extends T ? never : SymbolCallback<T>)
     /**
      * Size of symbol.
      */
-    symbolSize?: number | number[] | (T extends never ? never : SymbolSizeCallback<T>)
+    symbolSize?: number | number[] | (unknown extends T ? never : SymbolSizeCallback<T>)
 
-    symbolRotate?: number | (T extends never ? never : SymbolRotateCallback<T>)
+    symbolRotate?: number | (unknown extends T ? never : SymbolRotateCallback<T>)
 
     symbolKeepAspect?: boolean
 
-    symbolOffset?: string | number | (string | number)[] | (T extends never ? never : SymbolOffsetCallback<T>)
+    symbolOffset?: string | number | (string | number)[] | (unknown extends T ? never : SymbolOffsetCallback<T>)
 }
 
 /**
  * ItemStyleOption is a most common used set to config element styles.
  * It includes both fill and stroke style.
  */
-export interface ItemStyleOption<TCbParams = never> extends ShadowOptionMixin, BorderOptionMixin {
-    color?: ZRColor | (TCbParams extends never ? never : ((params: TCbParams) => ZRColor))
+export interface ItemStyleOption extends ShadowOptionMixin, BorderOptionMixin {
+    color?: ZRColor
     opacity?: number
     decal?: DecalObject | 'none'
 }
@@ -1354,10 +1358,12 @@ export interface CommonTooltipOption<FormatterParams> {
         'color' | 'fontStyle' | 'fontWeight' | 'fontFamily' | 'fontSize' |
         'lineHeight' | 'width' | 'height' | 'textBorderColor' | 'textBorderWidth' |
         'textShadowColor' | 'textShadowBlur' | 'textShadowOffsetX' | 'textShadowOffsetY'
-        | 'align'> & {
+        | 'align' | 'overflow'> & {
 
         // Available when renderMode is html
         decoration?: string
+        ellipsis?: TextStyleProps['ellipsis']
+        lineOverflow?: TextStyleProps['lineOverflow']
     }
 }
 
@@ -1499,16 +1505,15 @@ export type BlurScope = 'coordinateSystem' | 'series' | 'global';
  */
 export type InnerFocus = DefaultEmphasisFocus | ArrayLike<number> | Dictionary<ArrayLike<number>>;
 
-export interface DefaultStatesMixin {
-    // FIXME
-    emphasis?: any
-    select?: any
-    blur?: any
+export interface DefaultExtraStateOpts {
+    emphasis: any
+    select: any
+    blur: any
 }
 
 export type DefaultEmphasisFocus = 'none' | 'self' | 'series';
 
-export interface DefaultStatesMixinEmpasis {
+export interface DefaultExtraEmpasisState {
     /**
      * self: Focus self and blur all others.
      * series: Focus series and blur all other series.
@@ -1516,20 +1521,19 @@ export interface DefaultStatesMixinEmpasis {
     focus?: DefaultEmphasisFocus
 }
 
-export interface StatesMixinBase {
-    emphasis?: unknown
-    select?: unknown
-    blur?: unknown
+interface ExtraStateOptsBase {
+    emphasis?: {
+        focus?: string
+    },
+    select?: any
+    blur?: any
 }
 
-export interface StatesOptionMixin<
-    StateOption,
-    StatesMixin extends StatesMixinBase
-> {
+export interface StatesOptionMixin<StateOption, ExtraStateOpts extends ExtraStateOptsBase = DefaultExtraStateOpts> {
     /**
      * Emphasis states
      */
-    emphasis?: StateOption & StatesMixin['emphasis'] & {
+    emphasis?: StateOption & ExtraStateOpts['emphasis'] & {
         /**
          * Scope of blurred element when focus.
          *
@@ -1544,11 +1548,11 @@ export interface StatesOptionMixin<
     /**
      * Select states
      */
-    select?: StateOption & StatesMixin['select']
+    select?: StateOption & ExtraStateOpts['select']
     /**
      * Blur states.
      */
-    blur?: StateOption & StatesMixin['blur']
+    blur?: StateOption & ExtraStateOpts['blur']
 }
 
 export interface UniversalTransitionOption {
@@ -1576,13 +1580,11 @@ export interface UniversalTransitionOption {
 }
 
 export interface SeriesOption<
-    StateOption = unknown,
-    StatesMixin extends StatesMixinBase = DefaultStatesMixin
-> extends
+    StateOption=any, ExtraStateOpts extends ExtraStateOptsBase = DefaultExtraStateOpts> extends
     ComponentOption,
     AnimationOptionMixin,
     ColorPaletteOptionMixin,
-    StatesOptionMixin<StateOption, StatesMixin>
+    StatesOptionMixin<StateOption, ExtraStateOpts>
 {
     mainType?: 'series'
 
