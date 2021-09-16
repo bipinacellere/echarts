@@ -17,11 +17,11 @@
 * under the License.
 */
 
-import createSeriesDataSimply from '../helper/createSeriesDataSimply';
+import createListSimply from '../helper/createListSimply';
 import * as zrUtil from 'zrender/src/core/util';
 import * as modelUtil from '../../util/model';
-import { getPercentWithPrecision } from '../../util/number';
-import { makeSeriesEncodeForNameBased } from '../../data/helper/sourceHelper';
+import {getPercentWithPrecision} from '../../util/number';
+import {makeSeriesEncodeForNameBased} from '../../data/helper/sourceHelper';
 import LegendVisualProvider from '../../visual/LegendVisualProvider';
 import SeriesModel from '../../model/Series';
 import {
@@ -38,9 +38,9 @@ import {
     SeriesLabelOption,
     DefaultEmphasisFocus
 } from '../../util/types';
-import SeriesData from '../../data/SeriesData';
+import List from '../../data/List';
 
-interface PieItemStyleOption<TCbParams = never> extends ItemStyleOption<TCbParams> {
+interface PieItemStyleOption extends ItemStyleOption {
     // can be 10
     // which means that both innerCornerRadius and outerCornerRadius are 10
     // can also be an array [20, 10]
@@ -52,18 +52,14 @@ interface PieItemStyleOption<TCbParams = never> extends ItemStyleOption<TCbParam
     borderRadius?: (number | string)[] | number | string
 }
 
-export interface PieCallbackDataParams extends CallbackDataParams {
-    percent: number
-}
-
-export interface PieStateOption<TCbParams = never> {
+export interface PieStateOption {
     // TODO: TYPE Color Callback
-    itemStyle?: PieItemStyleOption<TCbParams>
+    itemStyle?: PieItemStyleOption
     label?: PieLabelOption
     labelLine?: PieLabelLineOption
 }
 interface PieLabelOption extends Omit<SeriesLabelOption, 'rotate' | 'position'> {
-    rotate?: number | boolean | 'radial' | 'tangential'
+    rotate?: number
     alignTo?: 'none' | 'labelLine' | 'edge'
     edgeDistance?: string | number
     /**
@@ -95,11 +91,11 @@ interface ExtraStateOption {
 export interface PieDataItemOption extends
     OptionDataItemObject<OptionDataValueNumeric>,
     PieStateOption, StatesOptionMixin<PieStateOption, ExtraStateOption> {
+
     cursor?: string
 }
 export interface PieSeriesOption extends
-    Omit<SeriesOption<PieStateOption<PieCallbackDataParams>, ExtraStateOption>, 'labelLine'>,
-    PieStateOption<PieCallbackDataParams>,
+    Omit<SeriesOption<PieStateOption, ExtraStateOption>, 'labelLine'>, PieStateOption,
     CircleLayoutOptionMixin,
     BoxLayoutOptionMixin,
     SeriesEncodeOptionMixin {
@@ -123,15 +119,14 @@ export interface PieSeriesOption extends
     animationType?: 'expansion' | 'scale'
     animationTypeUpdate?: 'transition' | 'expansion'
 
-    showEmptyCircle?: boolean;
-    emptyCircleStyle?: PieItemStyleOption;
-
-    data?: (OptionDataValueNumeric | OptionDataValueNumeric[] | PieDataItemOption)[]
+    data?: OptionDataValueNumeric[] | OptionDataValueNumeric[][] | PieDataItemOption[]
 }
 
 class PieSeriesModel extends SeriesModel<PieSeriesOption> {
 
     static type = 'series.pie' as const;
+
+    useColorPaletteOnData = true;
 
     /**
      * @overwrite
@@ -158,8 +153,8 @@ class PieSeriesModel extends SeriesModel<PieSeriesOption> {
     /**
      * @overwrite
      */
-    getInitialData(this: PieSeriesModel): SeriesData {
-        return createSeriesDataSimply(this, {
+    getInitialData(this: PieSeriesModel): List {
+        return createListSimply(this, {
             coordDimensions: ['value'],
             encodeDefaulter: zrUtil.curry(makeSeriesEncodeForNameBased, this)
         });
@@ -168,9 +163,9 @@ class PieSeriesModel extends SeriesModel<PieSeriesOption> {
     /**
      * @overwrite
      */
-    getDataParams(dataIndex: number): PieCallbackDataParams {
+    getDataParams(dataIndex: number): CallbackDataParams {
         const data = this.getData();
-        const params = super.getDataParams(dataIndex) as PieCallbackDataParams;
+        const params = super.getDataParams(dataIndex);
         // FIXME toFixed?
 
         const valueList: number[] = [];
@@ -205,7 +200,7 @@ class PieSeriesModel extends SeriesModel<PieSeriesOption> {
         zlevel: 0,
         z: 2,
         legendHoverLink: true,
-        colorBy: 'data',
+
         // 默认全局居中
         center: ['50%', '50%'],
         radius: [0, '75%'],
@@ -257,10 +252,11 @@ class PieSeriesModel extends SeriesModel<PieSeriesOption> {
             // Works only position is 'outer' and alignTo is not 'edge'.
             bleedMargin: 10,
             // Distance between text and label line.
-            distanceToLabelLine: 5
+            distanceToLabelLine: 5,
             // formatter: 标签文本格式器，同Tooltip.formatter，不支持异步回调
             // 默认使用全局文本样式，详见TEXTSTYLE
             // distance: 当position为inner时有效，为label位置到圆心的距离与圆半径(环状图为内外半径和)的比例系数
+            verticalAlign: 'middle'
         },
         // Enabled when label.normal.position is 'outer'
         labelLine: {
@@ -279,14 +275,7 @@ class PieSeriesModel extends SeriesModel<PieSeriesOption> {
             }
         },
         itemStyle: {
-            borderWidth: 1,
-            borderJoin: 'round'
-        },
-
-        showEmptyCircle: true,
-        emptyCircleStyle: {
-            color: 'lightgray',
-            opacity: 1
+            borderWidth: 1
         },
 
         labelLayout: {
