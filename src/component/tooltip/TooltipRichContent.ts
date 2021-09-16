@@ -26,7 +26,7 @@ import Model from '../../model/Model';
 import ZRText, { TextStyleProps } from 'zrender/src/graphic/Text';
 import { TooltipMarkupStyleCreator, getPaddingFromTooltipModel } from './tooltipMarkup';
 import { throwError } from '../../util/log';
-
+import {createTextStyle} from '../../label/labelStyle';
 class TooltipRichContent {
 
     private _zr: ZRenderType;
@@ -71,7 +71,7 @@ class TooltipRichContent {
      * Set tooltip content
      */
     setContent(
-        content: string | HTMLElement | HTMLElement[],
+        content: string | HTMLElement[],
         markupStyleCreator: TooltipMarkupStyleCreator,
         tooltipModel: Model<TooltipOption>,
         borderColor: ZRColor,
@@ -85,29 +85,17 @@ class TooltipRichContent {
         }
 
         const textStyleModel = tooltipModel.getModel('textStyle');
-
-        this.el = new ZRText({
-            style: {
-                rich: markupStyleCreator.richTextStyles,
+        const mergeTextStyle = createTextStyle(textStyleModel, {
                 text: content as string,
-                lineHeight: 22,
                 backgroundColor: tooltipModel.get('backgroundColor'),
-                borderRadius: tooltipModel.get('borderRadius'),
-                borderWidth: 1,
+                borderWidth: tooltipModel.get('borderWidth'),
                 borderColor: borderColor as string,
-                shadowColor: tooltipModel.get('shadowColor'),
-                shadowBlur: tooltipModel.get('shadowBlur'),
-                shadowOffsetX: tooltipModel.get('shadowOffsetX'),
-                shadowOffsetY: tooltipModel.get('shadowOffsetY'),
-                textShadowColor: textStyleModel.get('textShadowColor'),
-                textShadowBlur: textStyleModel.get('textShadowBlur') || 0,
-                textShadowOffsetX: textStyleModel.get('textShadowOffsetX') || 0,
-                textShadowOffsetY: textStyleModel.get('textShadowOffsetY') || 0,
                 fill: tooltipModel.get(['textStyle', 'color']),
-                padding: getPaddingFromTooltipModel(tooltipModel, 'richText'),
-                verticalAlign: 'top',
-                align: 'left'
-            },
+                padding: getPaddingFromTooltipModel(tooltipModel, 'richText')
+            }, {disableBox: true});
+        mergeTextStyle.rich = {...mergeTextStyle.rich, ...markupStyleCreator.richTextStyles};
+        this.el = new ZRText({
+            style: mergeTextStyle,
             z: tooltipModel.get('z')
         });
         this._zr.add(this.el);
@@ -203,6 +191,14 @@ class TooltipRichContent {
 
     isShow() {
         return this._show;
+    }
+
+    getOuterSize() {
+        const size = this.getSize();
+        return {
+            width: size[0],
+            height: size[1]
+        };
     }
 
     dispose() {
