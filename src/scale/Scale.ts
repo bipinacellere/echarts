@@ -20,7 +20,7 @@
 
 import * as clazzUtil from '../util/clazz';
 import { Dictionary } from 'zrender/src/core/types';
-import SeriesData from '../data/SeriesData';
+import List from '../data/List';
 import {
     DimensionName,
     ScaleDataValue,
@@ -91,7 +91,7 @@ abstract class Scale<SETTING extends Dictionary<unknown> = Dictionary<unknown>> 
     /**
      * Set extent from data
      */
-    unionExtentFromData(data: SeriesData, dim: DimensionName | DimensionLoose): void {
+    unionExtentFromData(data: List, dim: DimensionName | DimensionLoose): void {
         this.unionExtent(data.getApproximateExtent(dim));
     }
 
@@ -162,7 +162,8 @@ abstract class Scale<SETTING extends Dictionary<unknown> = Dictionary<unknown>> 
             fixMin?: boolean,
             fixMax?: boolean,
             minInterval?: number,
-            maxInterval?: number
+            maxInterval?: number,
+            interval?: number
         }
     ): void;
 
@@ -181,6 +182,8 @@ abstract class Scale<SETTING extends Dictionary<unknown> = Dictionary<unknown>> 
 }
 
 type ScaleConstructor = typeof Scale & clazzUtil.ClassManager;
-clazzUtil.enableClassManagement(Scale as ScaleConstructor);
+clazzUtil.enableClassManagement(Scale as ScaleConstructor, {
+    registerWhenExtend: true
+});
 
 export default Scale;

@@ -35,25 +35,26 @@ export function intervalScaleNiceTicks(
     extent: [number, number],
     splitNumber: number,
     minInterval?: number,
-    maxInterval?: number
+    maxInterval?: number,
+    preferredInterval?: number
 ): intervalScaleNiceTicksResult {
 
     const result = {} as intervalScaleNiceTicksResult;
 
     const span = extent[1] - extent[0];
-    let interval = result.interval = numberUtil.nice(span / splitNumber, true);
-    if (minInterval != null && interval < minInterval) {
-        interval = result.interval = minInterval;
+    preferredInterval = result.interval = preferredInterval || numberUtil.nice(span / splitNumber, true);
+    if (minInterval != null && preferredInterval < minInterval) {
+        preferredInterval = result.interval = minInterval;
     }
-    if (maxInterval != null && interval > maxInterval) {
-        interval = result.interval = maxInterval;
+    if (maxInterval != null && preferredInterval > maxInterval) {
+        preferredInterval = result.interval = maxInterval;
     }
     // Tow more digital for tick.
-    const precision = result.intervalPrecision = getIntervalPrecision(interval);
+    const precision = result.intervalPrecision = getIntervalPrecision(preferredInterval);
     // Niced extent inside original extent
     const niceTickExtent = result.niceTickExtent = [
-        roundNumber(Math.ceil(extent[0] / interval) * interval, precision),
-        roundNumber(Math.floor(extent[1] / interval) * interval, precision)
+        roundNumber(Math.ceil(extent[0] / preferredInterval) * preferredInterval, precision),
+        roundNumber(Math.floor(extent[1] / preferredInterval) * preferredInterval, precision)
     ];
 
     fixExtent(niceTickExtent, extent);
@@ -66,7 +67,7 @@ export function intervalScaleNiceTicks(
  */
 export function getIntervalPrecision(interval: number): number {
     // Tow more digital for tick.
-    return numberUtil.getPrecision(interval) + 2;
+    return numberUtil.getPrecisionSafe(interval) + 2;
 }
 
 function clamp(
