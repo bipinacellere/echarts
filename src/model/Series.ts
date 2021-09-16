@@ -23,12 +23,7 @@ import * as modelUtil from '../util/model';
 import {
     DataHost, DimensionName, StageHandlerProgressParams,
     SeriesOption, ZRColor, BoxLayoutOptionMixin,
-    ScaleDataValue,
-    Dictionary,
-    OptionDataItemObject,
-    SeriesDataType,
-    SeriesEncodeOptionMixin,
-    OptionEncodeValue,
+    ScaleDataValue, Dictionary, OptionDataItemObject, SeriesDataType,
     ColorBy
 } from '../util/types';
 import ComponentModel, { ComponentModelConstructor } from './Component';
@@ -46,7 +41,7 @@ import { CoordinateSystem } from '../coord/CoordinateSystem';
 import { ExtendableConstructor, mountExtend, Constructor } from '../util/clazz';
 import { PipelineContext, SeriesTaskContext, GeneralTask, OverallTask, SeriesTask } from '../core/Scheduler';
 import LegendVisualProvider from '../visual/LegendVisualProvider';
-import SeriesData from '../data/SeriesData';
+import List from '../data/List';
 import Axis from '../coord/Axis';
 import type { BrushCommonSelectorsForSeries, BrushSelectableArea } from '../component/brush/selector';
 import makeStyleMapper from './mixin/makeStyleMapper';
@@ -58,12 +53,12 @@ import {Group} from '../util/graphic';
 import {LegendIconParams} from '../component/legend/LegendModel';
 
 const inner = modelUtil.makeInner<{
-    data: SeriesData
-    dataBeforeProcessed: SeriesData
+    data: List
+    dataBeforeProcessed: List
     sourceManager: SourceManager
 }, SeriesModel>();
 
-function getSelectionKey(data: SeriesData, dataIndex: number): string {
+function getSelectionKey(data: List, dataIndex: number): string {
     return data.getName(dataIndex) || data.getId(dataIndex);
 }
 
@@ -111,7 +106,7 @@ interface SeriesModel {
      */
     brushSelector(
         dataIndex: number,
-        data: SeriesData,
+        data: List,
         selectors: BrushCommonSelectorsForSeries,
         area: BrushSelectableArea
     ): boolean;
@@ -223,7 +218,7 @@ class SeriesModel<Opt extends SeriesOption = SeriesOption> extends ComponentMode
         // dataBeforeProcessed by cloneShallow), cloneShallow will
         // cause data.graph.data !== data when using
         // module:echarts/data/Graph or module:echarts/data/Tree.
-        // See module:echarts/data/helper/linkSeriesData
+        // See module:echarts/data/helper/linkList
 
         // Theoretically, it is unreasonable to call `seriesModel.getData()` in the model
         // init or merge stage, because the data can be restored. So we do not `restoreData`
@@ -317,7 +312,7 @@ class SeriesModel<Opt extends SeriesOption = SeriesOption> extends ComponentMode
      * Init a data structure from data related option in series
      * Must be overriden.
      */
-    getInitialData(option: Opt, ecModel: GlobalModel): SeriesData {
+    getInitialData(option: Opt, ecModel: GlobalModel): List {
         return;
     }
 
@@ -338,23 +333,23 @@ class SeriesModel<Opt extends SeriesOption = SeriesOption> extends ComponentMode
      * data in the stream procedure. So we fetch data from upstream
      * each time `task.perform` called.
      */
-    getData(dataType?: SeriesDataType): SeriesData<this> {
+    getData(dataType?: SeriesDataType): List<this> {
         const task = getCurrentTask(this);
         if (task) {
             const data = task.context.data;
-            return (dataType == null ? data : data.getLinkedData(dataType)) as SeriesData<this>;
+            return (dataType == null ? data : data.getLinkedData(dataType)) as List<this>;
         }
         else {
             // When series is not alive (that may happen when click toolbox
             // restore or setOption with not merge mode), series data may
             // be still need to judge animation or something when graphic
             // elements want to know whether fade out.
-            return inner(this).data as SeriesData<this>;
+            return inner(this).data as List<this>;
         }
     }
 
     getAllData(): ({
-        data: SeriesData,
+        data: List,
         type?: SeriesDataType
     })[] {
         const mainData = this.getData();
@@ -363,7 +358,7 @@ class SeriesModel<Opt extends SeriesOption = SeriesOption> extends ComponentMode
             : [{ data: mainData }];
     }
 
-    setData(data: SeriesData): void {
+    setData(data: List): void {
         const task = getCurrentTask(this);
         if (task) {
             const context = task.context;
@@ -388,25 +383,14 @@ class SeriesModel<Opt extends SeriesOption = SeriesOption> extends ComponentMode
         inner(this).data = data;
     }
 
-    getEncode() {
-        const encode = (this as Model<SeriesEncodeOptionMixin>).get('encode', true);
-        if (encode) {
-            return zrUtil.createHashMap<OptionEncodeValue, DimensionName>(encode);
-        }
-    }
-
-    getSourceManager(): SourceManager {
-        return inner(this).sourceManager;
-    }
-
     getSource(): Source {
-        return this.getSourceManager().getSource();
+        return inner(this).sourceManager.getSource();
     }
 
     /**
      * Get data before processed
      */
-    getRawData(): SeriesData {
+    getRawData(): List {
         return inner(this).dataBeforeProcessed;
     }
 
@@ -516,7 +500,18 @@ class SeriesModel<Opt extends SeriesOption = SeriesOption> extends ComponentMode
         if (!selectedMap) {
             return;
         }
+        const selectedMode = this.option.selectedMode;
+
         const data = this.getData(dataType);
+        if (selectedMode === 'series') {
+            data.each(idx => {
+                const nameOrId = getSelectionKey(data, idx);
+                selectedMap[nameOrId] = false;
+                this._selectedDataIndicesMap[nameOrId] = -1;
+            });
+            return;
+        }
+
         for (let i = 0; i < innerDataIndices.length; i++) {
             const dataIndex = innerDataIndices[i];
             const nameOrId = getSelectionKey(data, dataIndex);
@@ -564,6 +559,7 @@ class SeriesModel<Opt extends SeriesOption = SeriesOption> extends ComponentMode
             return true;
         }
 
+        // NOTE: don't support define universalTransition in global option yet.
         const universalTransitionOpt = this.option.universalTransition;
         // Quick reject
         if (!universalTransitionOpt) {
@@ -578,17 +574,33 @@ class SeriesModel<Opt extends SeriesOption = SeriesOption> extends ComponentMode
         return universalTransitionOpt && universalTransitionOpt.enabled;
     }
 
-    private _innerSelect(data: SeriesData, innerDataIndices: number[]) {
+    private _innerSelect(data: List, innerDataIndices: number[]) {
         const selectedMode = this.option.selectedMode;
         const len = innerDataIndices.length;
         if (!selectedMode || !len) {
             return;
         }
 
-        if (selectedMode === 'multiple') {
+        if (selectedMode === 'series') {
+            const selectedMap = this.option.selectedMap || (this.option.selectedMap = {});
+            const self = this;
+            data.each(idx => {
+                if ((data.getItemModel(idx) as Model).get(['itemStyle', 'selectable']) === false) {
+                    return;
+                }
+                const nameOrId = getSelectionKey(data, idx);
+                selectedMap[nameOrId] = true;
+                self._selectedDataIndicesMap[nameOrId] = data.getRawIndex(idx);
+
+            });
+        }
+        else if (selectedMode === 'multiple') {
             const selectedMap = this.option.selectedMap || (this.option.selectedMap = {});
             for (let i = 0; i < len; i++) {
                 const dataIndex = innerDataIndices[i];
+                if ((data.getItemModel(dataIndex) as Model).get(['itemStyle', 'selectable']) === false) {
+                    return;
+                }
                 // TODO diffrent types of data share same object.
                 const nameOrId = getSelectionKey(data, dataIndex);
                 selectedMap[nameOrId] = true;
@@ -597,6 +609,9 @@ class SeriesModel<Opt extends SeriesOption = SeriesOption> extends ComponentMode
         }
         else if (selectedMode === 'single' || selectedMode === true) {
             const lastDataIndex = innerDataIndices[len - 1];
+            if ((data.getItemModel(lastDataIndex) as Model).get(['itemStyle', 'selectable']) === false) {
+                return;
+            }
             const nameOrId = getSelectionKey(data, lastDataIndex);
             this.option.selectedMap = {
                 [nameOrId]: true
@@ -607,7 +622,7 @@ class SeriesModel<Opt extends SeriesOption = SeriesOption> extends ComponentMode
         }
     }
 
-    private _initSelectedMapFromData(data: SeriesData) {
+    private _initSelectedMapFromData(data: List) {
         // Ignore select info in data if selectedMap exists.
         // NOTE It's only for legacy usage. edge data is not supported.
         if (this.option.selectedMap) {
@@ -698,13 +713,13 @@ function dataTaskProgress(param: StageHandlerProgressParams, context: SeriesTask
 }
 
 // TODO refactor
-function wrapData(data: SeriesData, seriesModel: SeriesModel): void {
-    zrUtil.each(zrUtil.concatArray(data.CHANGABLE_METHODS, data.DOWNSAMPLE_METHODS), function (methodName) {
+function wrapData(data: List, seriesModel: SeriesModel): void {
+    zrUtil.each([...data.CHANGABLE_METHODS, ...data.DOWNSAMPLE_METHODS], function (methodName) {
         data.wrapMethod(methodName as any, zrUtil.curry(onDataChange, seriesModel));
     });
 }
 
-function onDataChange(this: SeriesData, seriesModel: SeriesModel, newList: SeriesData): SeriesData {
+function onDataChange(this: List, seriesModel: SeriesModel, newList: List): List {
     const task = getCurrentTask(seriesModel);
     if (task) {
         // Consider case: filter, selectRange
