@@ -36,11 +36,12 @@ import {
     DecalObject,
     SeriesLabelOption,
     DefaultEmphasisFocus,
-    AriaOptionMixin
+    AriaOptionMixin,
+    ColorBy
 } from '../../util/types';
 import GlobalModel from '../../model/Global';
 import { LayoutRect } from '../../util/layout';
-import SeriesData from '../../data/SeriesData';
+import List from '../../data/List';
 import { normalizeToArray } from '../../util/model';
 import { createTooltipMarkup } from '../../component/tooltip/tooltipMarkup';
 import enableAriaDecalForTree from '../helper/enableAriaDecalForTree';
@@ -54,11 +55,11 @@ interface BreadcrumbItemStyleOption extends ItemStyleOption {
 }
 
 interface TreemapSeriesLabelOption extends SeriesLabelOption {
-    ellipsis?: boolean
+    ellipsis?: string,
     formatter?: string | ((params: CallbackDataParams) => string)
 }
 
-interface TreemapSeriesItemStyleOption<TCbParams = never> extends ItemStyleOption<TCbParams> {
+interface TreemapSeriesItemStyleOption extends ItemStyleOption {
     borderRadius?: number | number[]
 
     colorAlpha?: number
@@ -90,8 +91,8 @@ interface ExtraStateOption {
     }
 }
 
-export interface TreemapStateOption<TCbParams = never> {
-    itemStyle?: TreemapSeriesItemStyleOption<TCbParams>
+export interface TreemapStateOption {
+    itemStyle?: TreemapSeriesItemStyleOption
     label?: TreemapSeriesLabelOption
     upperLabel?: TreemapSeriesLabelOption
 }
@@ -148,8 +149,8 @@ export interface TreemapSeriesNodeItemOption extends TreemapSeriesVisualOption,
 }
 
 export interface TreemapSeriesOption
-    extends SeriesOption<TreemapStateOption<TreemapSeriesCallbackDataParams>, ExtraStateOption>,
-    TreemapStateOption<TreemapSeriesCallbackDataParams>,
+    extends SeriesOption<TreemapStateOption, ExtraStateOption>,
+    TreemapStateOption,
     BoxLayoutOptionMixin,
     RoamOptionMixin,
     TreemapSeriesVisualOption {
@@ -305,7 +306,7 @@ class TreemapSeriesModel extends SeriesModel<TreemapSeriesOption> {
             upperLabel: {
                 show: true,
                 position: [0, '50%'],
-                ellipsis: true,
+                ellipsis: '...',
                 verticalAlign: 'middle'
             }
         },
@@ -376,7 +377,7 @@ class TreemapSeriesModel extends SeriesModel<TreemapSeriesOption> {
         // to choose mappings approach among old shapes and new shapes.
         const tree = Tree.createTree(root, this, beforeLink);
 
-        function beforeLink(nodeData: SeriesData) {
+        function beforeLink(nodeData: List) {
             nodeData.wrapMethod('getItemModel', function (model, idx) {
                 const node = tree.getNodeByDataIndex(idx);
                 const levelModel = node ? levelModels[node.depth] : null;

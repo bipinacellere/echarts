@@ -17,7 +17,7 @@
 * under the License.
 */
 
-import { isString, indexOf, each, bind, isArray, isDom } from 'zrender/src/core/util';
+import { isString, indexOf, map, each, bind, isArray, isDom, retrieve } from 'zrender/src/core/util';
 import { toHex } from 'zrender/src/tool/color';
 import { normalizeEvent } from 'zrender/src/core/event';
 import { transformLocalCoord } from 'zrender/src/core/dom';
@@ -28,7 +28,7 @@ import type { ZRenderType } from 'zrender/src/zrender';
 import type { TooltipOption } from './TooltipModel';
 import Model from '../../model/Model';
 import type { ZRRawEvent } from 'zrender/src/core/types';
-import type { ZRColor } from '../../util/types';
+import type { ColorString, ZRColor } from '../../util/types';
 import type CanvasPainter from 'zrender/src/canvas/Painter';
 import type SVGPainter from 'zrender/src/svg/Painter';
 import {
@@ -400,6 +400,30 @@ class TooltipHTMLContent {
                 // it. Although it is not supported by IE8~IE10, fortunately it is a rare
                 // scenario.
                 + `;pointer-events:${this._enterable ? 'auto' : 'none'}`;
+
+            const textStyleModel = tooltipModel.getModel('textStyle');
+            const userWidth = textStyleModel.get('width');
+            if (userWidth != null) {
+                style.cssText += `;width:${userWidth}px;`;
+                // `text-overflow_string` has very humble compatibility
+                // shttps://caniuse.com/mdn-css_properties_text-overflow_string
+                const ellipsis = retrieve(textStyleModel.get('ellipsis'), 'ellipsis');
+                const userOverflow = textStyleModel.get('overflow');
+                if (userOverflow) {
+                    let overflowStyle;
+                    if (userOverflow === 'truncate') {
+                        overflowStyle = `overflow:hidden;text-overflow:${ellipsis};white-space:nowrap;`;
+                    }
+                    else {
+                        const breakMode = userOverflow === 'break'
+                            ? 'break-word'
+                            : userOverflow === 'breakAll'
+                                ? 'break-all' : '';
+                        breakMode && (overflowStyle = `word-break:${breakMode};white-space:normal;`);
+                    }
+                    style.cssText += overflowStyle;
+                }
+            }
         }
 
         this._show = true;
@@ -517,6 +541,21 @@ class TooltipHTMLContent {
 
     dispose() {
         this.el.parentNode.removeChild(this.el);
+    }
+
+    getOuterSize() {
+        let width = this.el.clientWidth;
+        let height = this.el.clientHeight;
+
+        // Consider browser compatibility.
+        // IE8 does not support getComputedStyle.
+        const stl = getComputedStyle(this.el);
+        if (stl) {
+            width += parseInt(stl.borderLeftWidth, 10) + parseInt(stl.borderRightWidth, 10);
+            height += parseInt(stl.borderTopWidth, 10) + parseInt(stl.borderBottomWidth, 10);
+        }
+
+        return {width: width, height: height};
     }
 
 }

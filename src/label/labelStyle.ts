@@ -30,15 +30,17 @@ import {
     ColorString,
     ZRStyleProps,
     AnimationOptionMixin,
-    InterpolatableValue
+    InterpolatableValue,
+    SeriesDataType
 } from '../util/types';
 import GlobalModel from '../model/Global';
 import { isFunction, retrieve2, extend, keys, trim } from 'zrender/src/core/util';
 import { SPECIAL_STATES, DISPLAY_STATES } from '../util/states';
 import { deprecateReplaceLog } from '../util/log';
 import { makeInner, interpolateRawValues } from '../util/model';
-import SeriesData from '../data/SeriesData';
+import List from '../data/List';
 import { initProps, updateProps } from '../util/graphic';
+import { getECData } from '../util/innerStore';
 
 type TextCommonParams = {
     /**
@@ -293,7 +295,7 @@ function setLabelStyle<TLabelDataIndex>(
 export { setLabelStyle };
 
 export function getLabelStatesModels<LabelName extends string = 'label'>(
-    itemModel: Model<StatesOptionMixin<any, any> & Partial<Record<LabelName, any>>>,
+    itemModel: Model<StatesOptionMixin<any> & Partial<Record<LabelName, any>>>,
     labelName?: LabelName
 ): Record<DisplayState, LabelModel> {
     labelName = (labelName || 'label') as LabelName;
@@ -421,6 +423,11 @@ function setTextStyleCommon(
     if (margin != null) {
         textStyle.margin = margin;
     }
+    const ellipsis = textStyleModel.get('ellipsis');
+    if (ellipsis) {
+        textStyle.ellipsis = ellipsis;
+    }
+    textStyle.lineOverflow = textStyleModel.get('lineOverflow');
     setTokenTextStyle(textStyle, textStyleModel, globalTextStyle, opt, isNotNormal, isAttached, true, false);
 }
 // Consider case:
@@ -686,7 +693,7 @@ export function setLabelValueAnimation(
 export function animateLabelValue(
     textEl: ZRText,
     dataIndex: number,
-    data: SeriesData,
+    data: List,
     animatableModel: Model<AnimationOptionMixin>,
     labelFetcher: SetLabelStyleOpt<number>['labelFetcher']
 ) {
