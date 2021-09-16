@@ -119,6 +119,13 @@ const getEdgeMapLengthWithKey = function (key, seriesModel) {
     const edgeMap = seriesModel.__edgeMap;
     return edgeMap[key] ? edgeMap[key].length : 0;
 };
+/**
+ *
+ * @param edge
+ */
+const isLoopEdge = function (edge) {
+    return edge.node1 === edge.node2;
+};
 
 /**
  * Count the number of edges between the same two points, used to obtain the curvature table and the parity of the edge
@@ -199,8 +206,11 @@ export function getCurvenessForEdge(edge, seriesModel, index, needReverse?: bool
     const curvenessList = seriesModel.__curvenessList;
     // if pass array no need parity
     const parityCorrection = isArrayParam ? 0 : totalLen % 2 ? 0 : 1;
-
-    if (!edgeArray.isForward) {
+    if (isLoopEdge(edge)) {
+        const curveness = curvenessList.filter(num => num > 0);
+        return curveness[edgeIndex];
+    }
+    else if (!edgeArray.isForward) {
         // the opposite edge show outside
         const oppositeKey = getOppositeKey(curKey);
         const len = getEdgeMapLengthWithKey(oppositeKey, seriesModel);
