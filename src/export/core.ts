@@ -24,7 +24,7 @@ export * from './api';
 import { use } from '../extension';
 
 // Import label layout by default.
-// TODO will be treeshaked.
+// TODO remove
 import {installLabelLayout} from '../label/installLabelLayout';
 use(installLabelLayout);
 
@@ -34,6 +34,7 @@ export {ZRColor as Color, Payload} from '../util/types';
 export {LinearGradientObject} from 'zrender/src/graphic/LinearGradient';
 export {RadialGradientObject} from 'zrender/src/graphic/RadialGradient';
 export {PatternObject, ImagePatternObject, SVGPatternObject} from 'zrender/src/graphic/Pattern';
+export {ElementEvent} from 'zrender/src/Element';
 
 // ComposeOption
 import type { ComponentOption, ECBasicOption as EChartsCoreOption } from '../util/types';
