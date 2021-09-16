@@ -33,13 +33,8 @@ import Model from '../model/Model';
 import { AxisBaseModel } from './AxisBaseModel';
 import LogScale from '../scale/Log';
 import Axis from './Axis';
-import {
-    AxisBaseOption,
-    CategoryAxisBaseOption,
-    LogAxisBaseOption,
-    TimeAxisLabelFormatterOption,
-    ValueAxisBaseOption
-} from './axisCommonTypes';
+import { makeAutoCategoryInterval } from './axisTickLabelBuilder';
+import { AxisBaseOption, TimeAxisLabelFormatterOption } from './axisCommonTypes';
 import type CartesianAxisModel from './cartesian/AxisModel';
 import SeriesData from '../data/SeriesData';
 import { getStackedDimension } from '../data/helper/dataStackHelper';
@@ -149,8 +144,7 @@ function adjustScaleForOverflow(
 // Precondition of calling this method:
 // The scale extent has been initailized using series data extent via
 // `scale.setExtent` or `scale.unionExtentFromData`;
-export function niceScaleExtent(scale: Scale, inModel: AxisBaseModel) {
-    const model = inModel as AxisBaseModel<LogAxisBaseOption>;
+export function niceScaleExtent(scale: Scale, model: AxisBaseModel) {
     const extentInfo = getScaleExtent(scale, model);
     const extent = extentInfo.extent;
     const splitNumber = model.get('splitNumber');
@@ -228,8 +222,7 @@ export function ifAxisCrossZero(axis: Axis) {
  *         return: {string} label string.
  */
 export function makeLabelFormatter(axis: Axis): (tick: ScaleTick, idx?: number) => string {
-    const labelFormatter = (axis.getLabelModel() as Model<ValueAxisBaseOption['axisLabel']>)
-        .get('formatter');
+    const labelFormatter = axis.getLabelModel().get('formatter');
     const categoryTickStart = axis.type === 'category' ? axis.scale.getExtent()[0] : null;
 
     if (axis.scale.type === 'time') {
@@ -271,7 +264,7 @@ export function makeLabelFormatter(axis: Axis): (tick: ScaleTick, idx?: number) 
                     } : null
                 );
             };
-        })(labelFormatter as (...args: any[]) => string);
+        })(labelFormatter);
     }
     else {
         return function (tick: ScaleTick) {
@@ -354,8 +347,8 @@ function rotateTextRect(textRect: RectLike, rotate: number) {
  * @param model axisLabelModel or axisTickModel
  * @return {number|String} Can be null|'auto'|number|function
  */
-export function getOptionCategoryInterval(model: Model<AxisBaseOption['axisLabel']>) {
-    const interval = (model as Model<CategoryAxisBaseOption['axisLabel']>).get('interval');
+export function getOptionCategoryInterval(model: Model<AxisBaseOption['axisLabel']>): string | number | ((index:number, value: string) => boolean) {
+    const interval = model.get('interval');
     return interval == null ? 'auto' : interval;
 }
 
@@ -365,8 +358,19 @@ export function getOptionCategoryInterval(model: Model<AxisBaseOption['axisLabel
  * @param {Object} axis axisModel.axis
  */
 export function shouldShowAllLabels(axis: Axis): boolean {
-    return axis.type === 'category'
-        && getOptionCategoryInterval(axis.getLabelModel()) === 0;
+    const optionCategoryInterval = getOptionCategoryInterval(axis.getLabelModel());
+    if (axis.type === 'category') {
+        if (typeof optionCategoryInterval === 'string') {
+            if(optionCategoryInterval === 'auto') {
+                return makeAutoCategoryInterval(axis) === 0;
+            } else {
+                return (+optionCategoryInterval) === 0 || Number.isNaN(+optionCategoryInterval);
+            }
+        } else if(typeof optionCategoryInterval === 'number') {
+            return optionCategoryInterval === 0;
+        }
+    }
+    return false;
 }
 
 export function getDataDimensionsOnAxis(data: SeriesData, axisDim: string): DimensionName[] {
