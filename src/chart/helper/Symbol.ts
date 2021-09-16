@@ -22,7 +22,7 @@ import * as graphic from '../../util/graphic';
 import {getECData} from '../../util/innerStore';
 import { enterEmphasis, leaveEmphasis, enableHoverEmphasis } from '../../util/states';
 import {getDefaultLabel} from './labelHelper';
-import SeriesData from '../../data/SeriesData';
+import List from '../../data/List';
 import { ColorString, BlurScope, AnimationOption, ZRColor } from '../../util/types';
 import SeriesModel from '../../model/Series';
 import { PathProps } from 'zrender/src/graphic/Path';
@@ -55,17 +55,18 @@ class Symbol extends graphic.Group {
 
     private _z2: number;
 
-    constructor(data: SeriesData, idx: number, seriesScope?: SymbolDrawSeriesScope, opts?: SymbolOpts) {
+    constructor(data: List, idx: number, seriesScope?: SymbolDrawSeriesScope, opts?: SymbolOpts) {
         super();
         this.updateData(data, idx, seriesScope, opts);
     }
 
     _createSymbol(
         symbolType: string,
-        data: SeriesData,
+        data: List,
         idx: number,
         symbolSize: number[],
-        keepAspect: boolean
+        keepAspect: boolean,
+        rotate: number
     ) {
         // Remove paths created before
         this.removeAll();
@@ -77,7 +78,7 @@ class Symbol extends graphic.Group {
         // and macOS Sierra, a circle stroke become a rect, no matter what
         // the scale is set. So we set width/height as 2. See #4150.
         const symbolPath = createSymbol(
-            symbolType, -1, -1, 2, 2, null, keepAspect
+            symbolType, -1, -1, 2, 2, null, keepAspect, rotate
         );
 
         symbolPath.attr({
@@ -151,7 +152,7 @@ class Symbol extends graphic.Group {
     /**
      * Update symbol properties
      */
-    updateData(data: SeriesData, idx: number, seriesScope?: SymbolDrawSeriesScope, opts?: SymbolOpts) {
+    updateData(data: List, idx: number, seriesScope?: SymbolDrawSeriesScope, opts?: SymbolOpts) {
         this.silent = false;
 
         const symbolType = data.getItemVisual(idx, 'symbol') || 'circle';
@@ -162,7 +163,8 @@ class Symbol extends graphic.Group {
 
         if (isInit) {
             const keepAspect = data.getItemVisual(idx, 'symbolKeepAspect');
-            this._createSymbol(symbolType as string, data, idx, symbolSize, keepAspect);
+            const rotate = data.getItemVisual(idx, 'symbolRotate') || 0;
+            this._createSymbol(symbolType as string, data, idx, symbolSize, keepAspect, rotate);
         }
         else {
             const symbolPath = this.childAt(0) as ECSymbol;
@@ -206,7 +208,7 @@ class Symbol extends graphic.Group {
     }
 
     _updateCommon(
-        data: SeriesData,
+        data: List,
         idx: number,
         symbolSize: number[],
         seriesScope?: SymbolDrawSeriesScope,
@@ -395,7 +397,7 @@ class Symbol extends graphic.Group {
         );
     }
 
-    static getSymbolSize(data: SeriesData, idx: number) {
+    static getSymbolSize(data: List, idx: number) {
         return normalizeSymbolSize(data.getItemVisual(idx, 'symbolSize'));
     }
 }
